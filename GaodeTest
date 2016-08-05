@@ -1,0 +1,327 @@
+/**
+ * Alipay.com Inc.
+ * Copyright (c) 2004-2016 All Rights Reserved.
+ */
+package com.xjcomeon.test;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.StringReader;
+import java.util.List;
+
+import org.apache.commons.httpclient.HttpClient;
+import org.apache.commons.httpclient.methods.GetMethod;
+import org.apache.commons.httpclient.methods.PostMethod;
+import org.apache.commons.httpclient.params.HttpMethodParams;
+import org.jdom.Document;
+import org.jdom.Element;
+import org.jdom.input.SAXBuilder;
+import org.xml.sax.InputSource;
+
+import com.alibaba.common.lang.StringUtil;
+
+/**
+ * 
+ * @author ji.xuj@alipay.com
+ * @version $Id: GaodeTest.java, v 0.1 2016年7月15日 下午7:54:14 Toby Exp $
+ */
+public class GaodeTest {
+
+    private static final String KEY      = "2410e2ebbcef2fc0bfb16f3d13a63b85";
+
+    private static final String CHAR_SET = "UTF-8";
+
+    /**
+     * 取得经纬度值。
+     * 
+     * @param address
+     * @param city
+     * @return
+     */
+    protected String geocode(String address, String city) {
+        StringBuffer uri = new StringBuffer("http://restapi.amap.com/v3/geocode/geo?");
+
+        uri.append("address=").append(address);
+
+        if (StringUtil.isNotBlank(city)) {
+            uri.append("&city=").append(city);
+        }
+
+        uri.append("&output=XML&key=").append(KEY);
+
+        String responseXML = httpRequest(uri.toString());
+
+        Document doc = buildDocument(responseXML);
+        Element geocodes = doc.getRootElement().getChild("geocodes");
+        Element geoCode = (Element) geocodes.getContent().get(0);
+
+        for (Element e : (List<Element>) geoCode.getContent()) {
+            if (StringUtil.equals("location", e.getName())) {
+                return e.getValue();
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 路径途径点集合。
+     * 
+     * @param origin
+     * @param destination
+     * @return
+     */
+    protected String polyline(String origin, String destination) {
+        StringBuffer pois = new StringBuffer("");
+
+        StringBuffer uri = new StringBuffer("http://restapi.amap.com/v3/direction/driving?");
+        uri.append("origin=").append(origin);
+
+        uri.append("&destination=").append(destination);
+        uri.append("&extensions=all&output=XML&key=").append(KEY);
+
+        String responseXML = httpRequest(uri.toString());
+
+        Document doc = buildDocument(responseXML);
+        Element route = doc.getRootElement().getChild("route");
+        Element paths = route.getChild("paths");
+
+        Element path = (Element) paths.getContent().get(0);
+
+        for (Element e : (List<Element>) path.getContent()) {
+            if (StringUtil.equals("steps", e.getName())) {
+                for (Element step : (List<Element>) e.getContent()) {
+                    for (Element polyline : (List<Element>) step.getContent()) {
+                        if (StringUtil.equals("polyline", polyline.getName())) {
+                            pois.append(polyline.getValue()).append(";");
+                        }
+                    }
+                }
+            }
+        }
+
+        return pois.toString();
+    }
+
+    /**
+     * 
+     * @param responseCodeXML
+     * @return
+     */
+    private Document buildDocument(String responseCodeXML) {
+        Document doc = null;
+        SAXBuilder builder = new SAXBuilder();
+        builder.setValidation(false);
+        StringReader sr = new StringReader(responseCodeXML);
+        InputSource is = new InputSource(sr);
+        is.setEncoding(CHAR_SET);
+
+        try {
+            doc = builder.build(is);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return doc;
+    }
+
+    /**
+     * send http request
+     * 
+     * @param uri
+     * @return
+     */
+    private String httpRequest(String uri) {
+
+        HttpClient client = new HttpClient();
+        GetMethod getMethod = new GetMethod(uri);
+        getMethod.getParams().setHttpElementCharset(CHAR_SET);
+
+        try {
+            client.executeMethod(getMethod);
+            return getMethod.getResponseBodyAsString();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            getMethod.releaseConnection();
+        }
+        return "";
+    }
+
+    /**
+     * 
+     * 
+     * @param uri
+     * @param filePath
+     * @return
+     */
+    private boolean httpRequest(String uri, String filePath) {
+
+        HttpClient client = new HttpClient();
+        GetMethod getMethod = new GetMethod(uri);
+        FileOutputStream output = null;
+        getMethod.getParams().setHttpElementCharset(CHAR_SET);
+
+        try {
+            client.executeMethod(getMethod);
+            File file = new File(filePath);
+            output = new FileOutputStream(file);
+            output.write(getMethod.getResponseBody());
+            output.close();
+
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            getMethod.releaseConnection();
+        }
+
+        return false;
+    }
+
+    private boolean httpPost(String uri, HttpMethodParams params, String filePath) {
+
+        HttpClient client = new HttpClient();
+        PostMethod postMethod = new PostMethod(uri);
+        FileOutputStream output = null;
+        postMethod.getParams().setHttpElementCharset(CHAR_SET);
+
+        postMethod.setParams(params);
+
+        try {
+            client.executeMethod(postMethod);
+            File file = new File(filePath);
+            output = new FileOutputStream(file);
+            output.write(postMethod.getResponseBody());
+            output.close();
+
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            postMethod.releaseConnection();
+        }
+
+        return false;
+    }
+
+    /**
+    * 静态地图生成。
+    * 
+    * @param originAddress
+    * @param originCity
+    * @param originLable
+    * @param destinationAddress
+    * @param destinationCity
+    * @param destinationLable
+    */
+    public void genStaticMapPhoto(String originAddress, String originCity, String originLable,
+                                  String destinationAddress, String destinationCity,
+                                  String destinationLable) {
+
+        StringBuffer uri = new StringBuffer("http://restapi.amap.com/v3/staticmap?");
+
+        //起始经纬度
+        String origin = geocode(originAddress, originCity);
+        String destination = geocode(destinationAddress, destinationCity);
+
+        //路径
+        String polyline = polyline(origin, destination);
+
+        //大图
+        uri.append("scale=2");
+
+        //放大系数
+        //uri.append("&zoom=14");
+
+        //分辨率
+        uri.append("&size=1024*1024");
+
+        //样式
+        uri.append("&markers=mid,,A:").append(origin);
+        uri.append("|large,,B:").append(destination);
+
+        //交通情况
+        uri.append("&traffic=1");
+
+        //标注
+        if (StringUtil.isNotBlank(originLable) && StringUtil.isNotBlank(destinationLable)) {
+            uri.append("&labels=").append(originLable).append(",2,0,16,0xFFFFFF,0xFF0000:")
+                .append(origin);
+
+            uri.append("|").append(destinationLable).append(",2,0,16,0xFFFFFF,0xFF0000:")
+                .append(destination);
+        }
+
+        polyline = StringUtil.substring(polyline, 0, polyline.length() - 1);
+
+        //路径
+        uri.append("&paths=5,0x0000FF,1,,:").append(polyline);
+        uri.append("&key=").append(KEY);
+
+        //存放路径
+        String filePath = "/Users/toby/dev/code/xcode/gaodemap/mappng/" + System.currentTimeMillis()
+                          + ".png";
+
+        System.out.println(uri.toString());
+
+        //生成
+        httpRequest(uri.toString(), filePath);
+    }
+
+    public void genStaticMapPhotoByPostMethod(String originAddress, String originCity,
+                                              String originLable, String destinationAddress,
+                                              String destinationCity, String destinationLable) {
+
+        StringBuffer uri = new StringBuffer("http://restapi.amap.com/v3/staticmap?");
+
+        //起始经纬度
+        String origin = geocode(originAddress, originCity);
+        String destination = geocode(destinationAddress, destinationCity);
+
+        //路径
+        String polyline = polyline(origin, destination);
+
+        HttpMethodParams params = new HttpMethodParams();
+
+        //大图
+        params.setParameter("scale", "2");
+
+        //分辨率
+        params.setParameter("size", "1024*1024");
+
+        //样式
+        params.setParameter("markers", "mid,,A:" + origin + "|large,,B:" + destination);
+
+        //交通情况
+        params.setParameter("traffic", "1");
+
+        //标注
+        if (StringUtil.isNotBlank(originLable) && StringUtil.isNotBlank(destinationLable)) {
+
+            params.setParameter("labels",
+                originLable + ",2,0,16,0xFFFFFF,0xFF0000:" + origin + "|" + destinationLable
+                                          + ",2,0,16,0xFFFFFF,0xFF0000:" + destination);
+        }
+
+        polyline = StringUtil.substring(polyline, 0, polyline.length() - 1);
+
+        //路径
+        params.setParameter("paths", "5,0x0000FF,1,,:" + polyline);
+
+        params.setParameter("key", KEY);
+
+        //存放路径
+        String filePath = "/Users/toby/dev/code/xcode/gaodemap/mappng/" + System.currentTimeMillis()
+                          + ".png";
+
+        //生成
+        httpPost(uri.toString(), params, filePath);
+    }
+
+    /**
+     * 
+     * @param args
+     */
+    public static void main(String[] args) {
+    }
+}
